@@ -1,0 +1,8 @@
+nohup: ignoring input
+TensorFlow installation not found - running with reduced feature set.
+TensorBoard 2.3.0 at http://thunlp-jump:6006/ (Press CTRL+C to quit)
+E1025 15:50:49.412246 139664176236288 _internal.py:113] ::ffff:220.191.173.222 - - [25/Oct/2020 15:50:49] code 400, message Bad request syntax ('\x03\x00\x00\x13\x0eà\x00\x00\x00\x00\x00\x01\x00\x08\x00\x03\x00\x00\x00')
+W1026 03:14:36.410895 139664008398592 plugin_event_multiplexer.py:263] Deleting accumulator '.'
+W1026 03:20:27.775723 139664008398592 plugin_event_multiplexer.py:263] Deleting accumulator '.'
+W1026 03:25:19.261348 139664008398592 plugin_event_multiplexer.py:263] Deleting accumulator '.'
+TensorBoard caught SIGTERM; exiting...
