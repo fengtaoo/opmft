@@ -13,8 +13,6 @@ from tqdm import tqdm
 import time
 import os
 
-
-
 def dev(args, model, metric, dev_loader, device):
     rst_dict = {}
     for dev_batch in tqdm(dev_loader):
@@ -290,222 +288,20 @@ def train_reinfoselect(args, model, policy, loss_fn, m_optim, m_scheduler, p_opt
                 log_prob_ns = []
 
 
-def train(args, model, loss_fn, m_optim, m_scheduler, metric, train_loader, dev_loader, dev_loader_2, device, writer,
+def infer(args, model, loss_fn, m_optim, m_scheduler, metric, train_loader, dev_loader, dev_loader_2, device, writer,
           teacher_model=None, loss_fn_2=None):
-    best_mes = 0.0
-    for epoch in range(args.epoch):
-        avg_loss = 0.0
-        avg_loss_mse = 0.0
-        avg_batch_loss = 0.0
-
-        for step, train_batch in enumerate(train_loader):
-
-            if args.eval_every > 0 and step % args.eval_every == 0:
-                if step != 0 or args.eval_first:
-                    model.eval()
-                    with torch.no_grad():
-                        print("running dev")
-                        mes = -1
-                        if dev_loader != None:
-                            rst_dict = dev(args, model, metric, dev_loader, device)
-                            om.utils.save_trec(args.res, rst_dict)
-                            mes = metric.get_mrr(args.qrels, args.res, args.metric)
-                            writer.add_scalar("dev", mes, step)
-                            print("Step " + str(step) + ": " + str(args.metric) + " = " + str(mes))
-                        if dev_loader_2 != None:
-                            rst_dict = dev(args, model, metric, dev_loader_2, device)
-                            om.utils.save_trec(args.res2, rst_dict)
-                            mes2 = metric.get_mrr(args.qrels2, args.res2, args.metric)
-                            writer.add_scalar("test", mes2, step)
-                    if mes >= best_mes:
-                        best_mes = mes
-                    print('save_model...')
-                    if torch.cuda.device_count() > 1:
-                        torch.save(model.module.state_dict(), args.save + '_step' + str(step + 1) + '.bin')
-                    else:
-                        torch.save(model.state_dict(), args.save + '_step' + str(step + 1) + '.bin')
-
-            model.train()
-            teacher_model.eval()
-            if args.model == 'bert':
-                if args.task == 'ranking':
-                    batch_score_pos, _ = model(train_batch['input_ids_pos'].to(device),
-                                               train_batch['input_mask_pos'].to(device),
-                                               train_batch['segment_ids_pos'].to(device))
-                    batch_score_neg, _ = model(train_batch['input_ids_neg'].to(device),
-                                               train_batch['input_mask_neg'].to(device),
-                                               train_batch['segment_ids_neg'].to(device))
-                elif args.task == "new":
 
 
-                    batch_score_pos, student_cls_pos = model(train_batch['input_ids_pos'].to(device),
-                                                             train_batch['input_mask_pos'].to(device),
-                                                             train_batch['segment_ids_pos'].to(device))
-                    batch_score_neg, student_cls_neg = model(train_batch['input_ids_neg'].to(device),
-                                                             train_batch['input_mask_neg'].to(device),
-                                                             train_batch['segment_ids_neg'].to(device))
-
-                    if args.mse:
-                        student_cls = torch.cat((student_cls_pos, student_cls_neg), 0)
-                        with torch.no_grad():
-                            _, teacher_cls_pos = teacher_model(train_batch['input_ids_pos_target'].to(device),
-                                                               train_batch['input_mask_pos_target'].to(device),
-                                                               train_batch['segment_ids_pos_target'].to(device))
-                            _, teacher_cls_neg = teacher_model(train_batch['input_ids_neg_target'].to(device),
-                                                               train_batch['input_mask_neg_target'].to(device),
-                                                               train_batch['segment_ids_neg_target'].to(device))
-                            teacher_cls = torch.cat((teacher_cls_pos, teacher_cls_neg), 0)
-
-                elif args.task == 'classification':
-                    batch_score, _ = model(train_batch['input_ids'].to(device), train_batch['input_mask'].to(device),
-                                           train_batch['segment_ids'].to(device))
-                else:
-                    raise ValueError('Task must be `ranking` or `classification`.')
-            elif args.model == 'roberta':
-                if args.task == 'ranking':
-                    batch_score_pos, _ = model(train_batch['input_ids_pos'].to(device),
-                                               train_batch['input_mask_pos'].to(device))
-                    batch_score_neg, _ = model(train_batch['input_ids_neg'].to(device),
-                                               train_batch['input_mask_neg'].to(device))
-                elif args.task == 'classification':
-                    batch_score, _ = model(train_batch['input_ids'].to(device), train_batch['input_mask'].to(device))
-                else:
-                    raise ValueError('Task must be `ranking` or `classification`.')
-            elif args.model == 'edrm':
-                if args.task == 'ranking':
-                    batch_score_pos, _ = model(train_batch['query_wrd_idx'].to(device),
-                                               train_batch['query_wrd_mask'].to(device),
-                                               train_batch['doc_pos_wrd_idx'].to(device),
-                                               train_batch['doc_pos_wrd_mask'].to(device),
-                                               train_batch['query_ent_idx'].to(device),
-                                               train_batch['query_ent_mask'].to(device),
-                                               train_batch['doc_pos_ent_idx'].to(device),
-                                               train_batch['doc_pos_ent_mask'].to(device),
-                                               train_batch['query_des_idx'].to(device),
-                                               train_batch['doc_pos_des_idx'].to(device))
-                    batch_score_neg, _ = model(train_batch['query_wrd_idx'].to(device),
-                                               train_batch['query_wrd_mask'].to(device),
-                                               train_batch['doc_neg_wrd_idx'].to(device),
-                                               train_batch['doc_neg_wrd_mask'].to(device),
-                                               train_batch['query_ent_idx'].to(device),
-                                               train_batch['query_ent_mask'].to(device),
-                                               train_batch['doc_neg_ent_idx'].to(device),
-                                               train_batch['doc_neg_ent_mask'].to(device),
-                                               train_batch['query_des_idx'].to(device),
-                                               train_batch['doc_neg_des_idx'].to(device))
-                elif args.task == 'classification':
-                    batch_score, _ = model(train_batch['query_wrd_idx'].to(device),
-                                           train_batch['query_wrd_mask'].to(device),
-                                           train_batch['doc_wrd_idx'].to(device),
-                                           train_batch['doc_wrd_mask'].to(device),
-                                           train_batch['query_ent_idx'].to(device),
-                                           train_batch['query_ent_mask'].to(device),
-                                           train_batch['doc_ent_idx'].to(device),
-                                           train_batch['doc_ent_mask'].to(device),
-                                           train_batch['query_des_idx'].to(device),
-                                           train_batch['doc_des_idx'].to(device))
-                else:
-                    raise ValueError('Task must be `ranking` or `classification`.')
-            else:
-                if args.task == 'ranking':
-                    batch_score_pos, _ = model(train_batch['query_idx'].to(device),
-                                               train_batch['query_mask'].to(device),
-                                               train_batch['doc_pos_idx'].to(device),
-                                               train_batch['doc_pos_mask'].to(device))
-                    batch_score_neg, _ = model(train_batch['query_idx'].to(device),
-                                               train_batch['query_mask'].to(device),
-                                               train_batch['doc_neg_idx'].to(device),
-                                               train_batch['doc_neg_mask'].to(device))
-                elif args.task == 'classification':
-                    batch_score, _ = model(train_batch['query_idx'].to(device), train_batch['query_mask'].to(device),
-                                           train_batch['doc_idx'].to(device), train_batch['doc_mask'].to(device))
-                else:
-                    raise ValueError('Task must be `ranking` or `classification`.')
-            if args.task == 'ranking':
-                batch_loss = loss_fn(batch_score_pos.tanh(), batch_score_neg.tanh(),
-                                     torch.ones(batch_score_pos.size()).to(device))
-            elif args.task == "new":
-                if args.ranking_loss:
-                    batch_loss = loss_fn(batch_score_pos.tanh(), batch_score_neg.tanh(),
-                                         torch.ones(batch_score_pos.size()).to(device))
-                    if torch.cuda.device_count() > 1:
-                        batch_loss = batch_loss.mean()
-
-                    avg_batch_loss += batch_loss.item()
+    model.eval()
+    with torch.no_grad():
+        print("running inference...")
 
 
-                if args.mse:
-                    mse_loss = loss_fn_2(student_cls, teacher_cls)
-                    if torch.cuda.device_count() > 1:
-                        mse_loss = mse_loss.mean()
-
-                    avg_loss_mse += mse_loss.item()
-            elif args.task == 'classification':
-                batch_loss = loss_fn(batch_score, train_batch['label'].to(device))
-            else:
-                raise ValueError('Task must be `ranking` or `classification` or `new`.')
-
-
-
-            if torch.cuda.device_count() > 1:
-                if args.task != 'new':
-                    batch_loss = batch_loss.mean()
-                    avg_loss += batch_loss.item()
-
-
-
-
-            if args.task == "new":
-                if args.mse:
-                    if args.ranking_loss:
-                        (batch_loss + mse_loss).backward()
-                        avg_loss = avg_loss_mse + avg_batch_loss
-                    else:
-                        mse_loss.backward()
-                        avg_loss = avg_loss_mse
-                else:
-                    batch_loss.backward()
-                    avg_loss = avg_batch_loss
-            else:
-                batch_loss.backward()
-
-
-
-
-            m_optim.step()
-            m_scheduler.step()
-            m_optim.zero_grad()
-
-            if args.eval_every > 0 and step % (args.eval_every / 2) == 0 and step != 0:
-                print('save_model...')
-                if torch.cuda.device_count() > 1:
-                    torch.save(model.module.state_dict(), args.save + '_step' + str(step) + '.bin')
-                else:
-                    torch.save(model.state_dict(), args.save + '_step' + str(step) + '.bin')
-
-            if step % 100 == 0 and step != 0:
-                print(step, avg_loss / 100, best_mes)
-                writer.add_scalar("avg_loss", avg_loss / 100, step)
-                avg_loss = 0
-
-                if args.task == "new":
-                    if args.mse:
-                        if args.ranking_loss:
-                            writer.add_scalar("avg_loss_mse", avg_loss_mse / 100, step)
-                            writer.add_scalar("avg_batch_loss", avg_batch_loss / 100, step)
-
-                            avg_batch_loss = 0
-                            avg_loss_mse = 0
-                        else:
-                            writer.add_scalar("avg_loss_mse", avg_loss_mse / 100, step)
-                            avg_loss_mse = 0
-
-                    else:
-                        writer.add_scalar("avg_batch_loss", avg_batch_loss / 100, step)
-                        avg_batch_loss = 0
-
-
-
+        rst_dict = dev(args, model, metric, dev_loader, device)
+        om.utils.save_trec(args.res, rst_dict)
+        mes = metric.get_mrr(args.qrels, args.res, args.metric)
+        writer.add_scalar("dev", mes, step)
+        print("Step " + str(step) + ": " + str(args.metric) + " = " + str(mes))
 
 
 
@@ -548,6 +344,8 @@ def make_task_work_dir(args):
         for eachArg, value in argsDict.items():
             f.writelines(eachArg + ' : ' + str(value) + '\n')
         f.writelines('------------------- end -------------------')
+
+
 
 
 def main():
@@ -622,6 +420,7 @@ def main():
                 max_input=args.max_input,
                 task=args.task
             )
+        print('reading test data...')
         if args.dev2 != None:
             dev_set_2 = om.data.datasets.BertDataset(
                 dataset=args.dev2,
@@ -712,12 +511,7 @@ def main():
             task=args.task
         )
 
-    train_loader = om.data.DataLoader(
-        dataset=train_set,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=8
-    )
+    train_loader = None
     dev_loader, dev_loader_2 = None, None
     if dev_set != None:
         dev_loader = om.data.DataLoader(
@@ -871,7 +665,7 @@ def main():
         model2.to(device)
     if args.reinfoselect:
         policy.to(device)
-    loss_fn.to(device)
+    loss_fn.to(device) 
     if loss_fn_2 != None:
         loss_fn_2.to(device)
     if torch.cuda.device_count() > 1:
@@ -886,7 +680,7 @@ def main():
         train_reinfoselect(args, model, policy, loss_fn, m_optim, m_scheduler, p_optim, metric, train_loader,
                            dev_loader, device)
     else:
-        train(args, model, loss_fn, m_optim, m_scheduler, metric, train_loader, dev_loader, dev_loader_2, device,
+        infer(args, model, loss_fn, m_optim, m_scheduler, metric, train_loader, dev_loader, dev_loader_2, device,
               writer, teacher_model=model2, loss_fn_2=loss_fn_2)
     writer.close()
 
